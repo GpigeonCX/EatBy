@@ -25,7 +25,7 @@ cd frontend
 npm install
 npm run build
 cd ..
-EATBY_ADMIN_USERNAME=admin EATBY_ADMIN_PASSWORD='your-long-password' go run ./cmd/server -data ./dev-data
+EATBY_ADMIN_USERNAME=admin EATBY_ADMIN_PASSWORD='your-password' go run ./cmd/server -data ./dev-data
 ```
 
 打开 `http://localhost:8080`，使用 `.env` 中的管理员账号登录，在管理后台生成首个家庭注册链接。

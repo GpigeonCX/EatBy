@@ -88,8 +88,8 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		CurrentPassword string `json:"current_password"`
 		NewPassword     string `json:"new_password"`
 	}
-	if decode(r, &in) != nil || len(in.NewPassword) < 10 {
-		fail(w, 400, "新密码至少 10 位")
+	if decode(r, &in) != nil || len(in.NewPassword) < 1 {
+		fail(w, 400, "新密码不能为空")
 		return
 	}
 	var hash string
@@ -430,8 +430,8 @@ func (s *Server) adminResetPassword(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		TemporaryPassword string `json:"temporary_password"`
 	}
-	if decode(r, &in) != nil || len(in.TemporaryPassword) < 10 {
-		fail(w, 400, "临时密码至少 10 位")
+	if decode(r, &in) != nil || len(in.TemporaryPassword) < 1 {
+		fail(w, 400, "临时密码不能为空")
 		return
 	}
 	id := chi.URLParam(r, "id")

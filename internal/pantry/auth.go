@@ -63,8 +63,8 @@ func validateCredentials(username, password string) error {
 	if !usernamePattern.MatchString(normalizeUsername(username)) {
 		return fmt.Errorf("用户名需为 3-32 位小写字母、数字、点、横线或下划线")
 	}
-	if len(password) < 10 {
-		return fmt.Errorf("密码至少 10 位")
+	if len(password) < 1 {
+		return fmt.Errorf("密码不能为空")
 	}
 	return nil
 }

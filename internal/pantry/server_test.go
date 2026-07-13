@@ -17,6 +17,15 @@ type testClient struct {
 	cookie *http.Cookie
 }
 
+func TestPasswordMinimumIsOneCharacter(t *testing.T) {
+	if err := validateCredentials("abc", "x"); err != nil {
+		t.Fatalf("one-character password rejected: %v", err)
+	}
+	if err := validateCredentials("abc", ""); err == nil {
+		t.Fatal("empty password should be rejected")
+	}
+}
+
 func newTestServer(t *testing.T) (http.Handler, *Store) {
 	t.Helper()
 	store, e := Open(t.TempDir() + "/test.db")
