@@ -1,4 +1,4 @@
-.PHONY: build test dev clean
+.PHONY: build test dev dev-reset-admin clean
 
 build:
 	cd frontend && npm run build
@@ -10,7 +10,10 @@ test:
 	cd frontend && npm run build
 
 dev:
-	EATBY_ADMIN_USERNAME=$${EATBY_ADMIN_USERNAME:-admin} EATBY_ADMIN_PASSWORD=$${EATBY_ADMIN_PASSWORD:-change-this-password} go run ./cmd/server -data ./dev-data
+	set -a; . ./.env; set +a; GOCACHE=$${GOCACHE:-/tmp/eatby-go-cache} go run ./cmd/server -data ./dev-data
+
+dev-reset-admin:
+	set -a; . ./.env; set +a; GOCACHE=$${GOCACHE:-/tmp/eatby-go-cache} go run ./cmd/server -data ./dev-data -reset-admin-password
 
 clean:
 	rm -rf bin frontend/dist

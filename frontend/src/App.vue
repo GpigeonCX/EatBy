@@ -13,6 +13,7 @@ const dashboard=ref<Dashboard|null>(null),products=ref<Product[]>([]),batches=re
 const showProduct=ref(false),showBatch=ref(false),showShopping=ref(false),showScanner=ref(false)
 const displayMode=location.pathname.startsWith('/display/'),displayToken=displayMode?decodeURIComponent(location.pathname.split('/').pop()||''):''
 const privacyMode=location.pathname==='/privacy'
+const adminPath=location.pathname==='/admin'
 const registerMode=location.pathname==='/register',joinMode=location.pathname==='/join'
 let displayTimer:number|undefined
 const auth=reactive({username:'',password:'',display_name:'',household_name:'',code:new URLSearchParams(location.search).get('code')||'',token:new URLSearchParams(location.search).get('token')||'',current_password:'',new_password:''})
@@ -26,7 +27,7 @@ const filteredProducts=computed(()=>products.value.filter(p=>(!stockQuery.value|
 function notify(s:string){toast.value=s;window.setTimeout(()=>toast.value='',2200)}
 function showError(e:unknown){error.value=e instanceof Error?e.message:'操作失败';window.setTimeout(()=>error.value='',4000)}
 async function boot(){if(displayMode){await loadDisplay();loading.value=false;displayTimer=window.setInterval(loadDisplay,300000);return}try{platform.value=await api('/status')}catch{}if(privacyMode||registerMode||joinMode){loading.value=false;return}await getMe();loading.value=false}
-async function getMe(){try{const current=await api<Me>('/me');me.value=current;loggedIn.value=true;if(current.role==='platform_admin')await loadAdmin();else if(!current.must_change_password)await loadAll()}catch(e){if(!(e instanceof ApiError&&e.status===401))showError(e);loggedIn.value=false}}
+async function getMe(){try{const current=await api<Me>('/me');if(adminPath&&current.role!=='platform_admin'){await post('/auth/logout');throw new Error('该账号没有平台管理权限')};me.value=current;loggedIn.value=true;if(current.role==='platform_admin')await loadAdmin();else if(!current.must_change_password)await loadAll()}catch(e){if(!(e instanceof ApiError&&e.status===401))showError(e);loggedIn.value=false}}
 async function login(){try{await post('/auth/login',{username:auth.username,password:auth.password});await getMe()}catch(e){showError(e)}}
 async function register(){try{await post('/register',{code:auth.code,username:auth.username,password:auth.password,display_name:auth.display_name,household_name:auth.household_name});history.replaceState({},'',location.origin+'/');await getMe()}catch(e){showError(e)}}
 async function join(){try{await post('/household-invites/'+encodeURIComponent(auth.token)+'/accept',{username:auth.username,password:auth.password,display_name:auth.display_name});history.replaceState({},'',location.origin+'/');await getMe()}catch(e){showError(e)}}

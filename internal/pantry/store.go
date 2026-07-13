@@ -52,6 +52,23 @@ func (s *Store) BootstrapAdmin(username, password string) error {
 	return err
 }
 
+func (s *Store) ResetAdminPassword(username, password string) error {
+	username = normalizeUsername(username)
+	if err := validateCredentials(username, password); err != nil {
+		return err
+	}
+	res, err := s.DB.Exec(`UPDATE users SET password_hash=?,must_change_password=0,status='active' WHERE username=? AND role='platform_admin'`, hashPassword(password), username)
+	if err != nil {
+		return err
+	}
+	count, _ := res.RowsAffected()
+	if count == 0 {
+		return fmt.Errorf("平台管理员 %q 不存在", username)
+	}
+	_, _ = s.DB.Exec(`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username=? AND role='platform_admin')`, username)
+	return nil
+}
+
 func RunBackups(s *Store, dataDir string, keep int) {
 	backup := func() {
 		dir := filepath.Join(dataDir, "backups")

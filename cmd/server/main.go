@@ -23,6 +23,7 @@ var webFiles embed.FS
 func main() {
 	addr := flag.String("addr", env("PANTRY_ADDR", ":8080"), "listen address")
 	data := flag.String("data", env("PANTRY_DATA", "./data"), "data directory")
+	resetAdmin := flag.Bool("reset-admin-password", false, "reset the configured platform administrator password and exit")
 	flag.Parse()
 
 	if err := os.MkdirAll(*data, 0o750); err != nil {
@@ -36,6 +37,13 @@ func main() {
 	defer store.Close()
 	if err := store.BootstrapAdmin(os.Getenv("EATBY_ADMIN_USERNAME"), os.Getenv("EATBY_ADMIN_PASSWORD")); err != nil {
 		log.Fatal(err)
+	}
+	if *resetAdmin {
+		if err := store.ResetAdminPassword(os.Getenv("EATBY_ADMIN_USERNAME"), os.Getenv("EATBY_ADMIN_PASSWORD")); err != nil {
+			log.Fatal(err)
+		}
+		log.Print("platform administrator password reset")
+		return
 	}
 
 	web, err := fs.Sub(webFiles, "web")

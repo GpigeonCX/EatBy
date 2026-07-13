@@ -30,6 +30,21 @@ EATBY_ADMIN_USERNAME=admin EATBY_ADMIN_PASSWORD='your-long-password' go run ./cm
 
 打开 `http://localhost:8080`，使用 `.env` 中的管理员账号登录，在管理后台生成首个家庭注册链接。
 
+`make dev` 会加载仓库根目录的 `.env`。管理员密码只在首次创建账号时读取；修改 `.env` 后如需同步更新开发数据库中的管理员密码，执行：
+
+```bash
+make dev-reset-admin
+make dev
+```
+
+常用入口：
+
+- `/`：所有家庭成员登录。登录后由账号自动进入所属家庭，不使用可猜测的家庭 URL。
+- `/admin`：平台管理员登录与家庭管理。
+- `/register?code=...`：平台邀请码创建新家庭。
+- `/join?token=...`：家庭邀请成员注册。
+- `/display/<token>`：Kindle 家庭只读看板。
+
 单家庭旧版 `data/pantry.db` 不会自动迁移。多家庭版本应使用新的空目录，例如 `dev-data` 或 `production-data`。
 
 ## 阿里云大陆部署
