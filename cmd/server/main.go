@@ -34,6 +34,9 @@ func main() {
 		log.Fatal(err)
 	}
 	defer store.Close()
+	if err := store.BootstrapAdmin(os.Getenv("EATBY_ADMIN_USERNAME"), os.Getenv("EATBY_ADMIN_PASSWORD")); err != nil {
+		log.Fatal(err)
+	}
 
 	web, err := fs.Sub(webFiles, "web")
 	if err != nil {

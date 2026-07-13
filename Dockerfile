@@ -16,9 +16,9 @@ COPY --from=web /src/cmd/server/web/ cmd/server/web/
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /pantry ./cmd/server
 
 FROM alpine:3.22
-RUN addgroup -S pantry && adduser -S pantry -G pantry && mkdir -p /data && chown pantry:pantry /data
-USER pantry
+RUN apk add --no-cache ca-certificates su-exec tzdata && addgroup -S pantry && adduser -S pantry -G pantry && mkdir -p /data && chown pantry:pantry /data
 COPY --from=backend /pantry /usr/local/bin/pantry
+COPY deploy/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 VOLUME ["/data"]
 EXPOSE 8080
-ENTRYPOINT ["pantry", "-data", "/data"]
+ENTRYPOINT ["docker-entrypoint.sh"]

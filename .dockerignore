@@ -1,6 +1,8 @@
 .git
 .idea
 data
+production-data
+.env
 frontend/node_modules
 frontend/.vite
 *.db

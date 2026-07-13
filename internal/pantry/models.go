@@ -5,7 +5,6 @@ type Location struct {
 	Name      string `json:"name"`
 	SortOrder int    `json:"sort_order"`
 }
-
 type Product struct {
 	ID            string   `json:"id"`
 	Name          string   `json:"name"`
@@ -20,7 +19,6 @@ type Product struct {
 	BatchCount    int      `json:"batch_count,omitempty"`
 	StockState    string   `json:"stock_state,omitempty"`
 }
-
 type Batch struct {
 	ID              string   `json:"id"`
 	ProductID       string   `json:"product_id"`
@@ -39,7 +37,6 @@ type Batch struct {
 	EffectiveExpiry *string  `json:"effective_expiry,omitempty"`
 	ExpiryStatus    string   `json:"expiry_status,omitempty"`
 }
-
 type ShoppingItem struct {
 	ID        string   `json:"id"`
 	ProductID *string  `json:"product_id"`
@@ -47,4 +44,12 @@ type ShoppingItem struct {
 	Quantity  *float64 `json:"quantity"`
 	Unit      *string  `json:"unit"`
 	Checked   bool     `json:"checked"`
+}
+type UserSummary struct {
+	ID                 string `json:"id"`
+	Username           string `json:"username"`
+	DisplayName        string `json:"display_name"`
+	Role               string `json:"role"`
+	Status             string `json:"status"`
+	MustChangePassword bool   `json:"must_change_password"`
 }

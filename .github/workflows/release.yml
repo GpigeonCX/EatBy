@@ -1,0 +1,65 @@
+name: Release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: frontend
+      - run: npm test && npm run build
+        working-directory: frontend
+      - run: go test ./...
+  image:
+    needs: quality
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        run: echo "tag=ghcr.io/gpigeoncx/eatby:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/gpigeoncx/eatby:${{ github.sha }}
+            ghcr.io/gpigeoncx/eatby:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  deploy:
+    needs: image
+    if: ${{ vars.AUTO_DEPLOY == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - run: mkdir -p ~/.ssh && ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+      - env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          IMAGE: ${{ needs.image.outputs.tag }}
+        run: |
+          ssh "$USER@$HOST" "cd /opt/eatby && git pull --ff-only && EATBY_IMAGE='$IMAGE' docker compose pull app && EATBY_IMAGE='$IMAGE' docker compose up -d --no-build && curl -fsS https://\$(grep '^DOMAIN=' .env | cut -d= -f2)/healthz"

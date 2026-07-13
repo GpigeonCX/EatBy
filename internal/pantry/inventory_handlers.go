@@ -4,16 +4,16 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/go-chi/chi/v5"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/go-chi/chi/v5"
 )
 
 func (s *Server) listLocations(w http.ResponseWriter, r *http.Request) {
-	rows, e := s.store.DB.Query(`SELECT id,name,sort_order FROM locations ORDER BY sort_order,name`)
+	a := getActor(r)
+	rows, e := s.store.DB.Query(`SELECT id,name,sort_order FROM locations WHERE household_id=? ORDER BY sort_order,name`, a.HouseholdID)
 	if e != nil {
 		fail(w, 500, e.Error())
 		return
@@ -28,13 +28,14 @@ func (s *Server) listLocations(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, 200, out)
 }
 func (s *Server) createLocation(w http.ResponseWriter, r *http.Request) {
+	a := getActor(r)
 	var v Location
 	if decode(r, &v) != nil || strings.TrimSpace(v.Name) == "" {
 		fail(w, 400, "位置名称不能为空")
 		return
 	}
 	v.ID = newID("loc")
-	_, e := s.store.DB.Exec(`INSERT INTO locations(id,name,sort_order,created_at) VALUES(?,?,?,?)`, v.ID, strings.TrimSpace(v.Name), v.SortOrder, now())
+	_, e := s.store.DB.Exec(`INSERT INTO locations(id,household_id,name,sort_order,created_at) VALUES(?,?,?,?,?)`, v.ID, a.HouseholdID, strings.TrimSpace(v.Name), v.SortOrder, now())
 	if e != nil {
 		fail(w, 409, "位置名称已存在")
 		return
@@ -42,13 +43,14 @@ func (s *Server) createLocation(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, 201, v)
 }
 func (s *Server) updateLocation(w http.ResponseWriter, r *http.Request) {
+	a := getActor(r)
 	var v Location
 	if decode(r, &v) != nil || strings.TrimSpace(v.Name) == "" {
 		fail(w, 400, "位置名称不能为空")
 		return
 	}
 	v.ID = chi.URLParam(r, "id")
-	res, e := s.store.DB.Exec(`UPDATE locations SET name=?,sort_order=? WHERE id=?`, strings.TrimSpace(v.Name), v.SortOrder, v.ID)
+	res, e := s.store.DB.Exec(`UPDATE locations SET name=?,sort_order=? WHERE id=? AND household_id=?`, strings.TrimSpace(v.Name), v.SortOrder, v.ID, a.HouseholdID)
 	if e != nil {
 		fail(w, 409, "位置名称已存在")
 		return
@@ -61,9 +63,15 @@ func (s *Server) updateLocation(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, 200, v)
 }
 func (s *Server) deleteLocation(w http.ResponseWriter, r *http.Request) {
-	_, e := s.store.DB.Exec(`DELETE FROM locations WHERE id=?`, chi.URLParam(r, "id"))
+	a := getActor(r)
+	res, e := s.store.DB.Exec(`DELETE FROM locations WHERE id=? AND household_id=?`, chi.URLParam(r, "id"), a.HouseholdID)
 	if e != nil {
 		fail(w, 409, "该位置仍有库存，无法删除")
+		return
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		fail(w, 404, "位置不存在")
 		return
 	}
 	jsonOut(w, 200, map[string]bool{"ok": true})
@@ -75,7 +83,7 @@ func scanProduct(scanner interface{ Scan(...any) error }) (Product, error) {
 	var days sql.NullInt64
 	var barcode sql.NullString
 	var fav int
-	err := scanner.Scan(&p.ID, &p.Name, &p.Category, &p.DefaultUnit, &p.TrackingMode, &low, &days, &barcode, &fav)
+	e := scanner.Scan(&p.ID, &p.Name, &p.Category, &p.DefaultUnit, &p.TrackingMode, &low, &days, &barcode, &fav)
 	if low.Valid {
 		p.LowThreshold = &low.Float64
 	}
@@ -87,13 +95,32 @@ func scanProduct(scanner interface{ Scan(...any) error }) (Product, error) {
 		p.Barcode = &barcode.String
 	}
 	p.Favorite = fav == 1
-	return p, err
+	return p, e
 }
 func productSelect() string {
 	return `SELECT id,name,category,default_unit,tracking_mode,low_threshold,after_open_days,barcode,favorite FROM products`
 }
+func (s *Server) fillProductStock(hid string, p *Product) {
+	_ = s.store.DB.QueryRow(`SELECT COALESCE(SUM(quantity),0),COUNT(*) FROM batches WHERE household_id=? AND product_id=?`, hid, p.ID).Scan(&p.TotalQuantity, &p.BatchCount)
+	var level sql.NullString
+	_ = s.store.DB.QueryRow(`SELECT level FROM batches WHERE household_id=? AND product_id=? AND level IS NOT NULL ORDER BY CASE level WHEN 'empty' THEN 0 WHEN 'low' THEN 1 WHEN 'half' THEN 2 ELSE 3 END LIMIT 1`, hid, p.ID).Scan(&level)
+	if p.TrackingMode == "quantity" {
+		if p.TotalQuantity <= 0 {
+			p.StockState = "empty"
+		} else if p.LowThreshold != nil && p.TotalQuantity <= *p.LowThreshold {
+			p.StockState = "low"
+		} else {
+			p.StockState = "enough"
+		}
+	} else if level.Valid {
+		p.StockState = level.String
+	} else {
+		p.StockState = "empty"
+	}
+}
 func (s *Server) listProducts(w http.ResponseWriter, r *http.Request) {
-	rows, e := s.store.DB.Query(productSelect() + ` ORDER BY favorite DESC,name`)
+	a := getActor(r)
+	rows, e := s.store.DB.Query(productSelect()+` WHERE household_id=? ORDER BY favorite DESC,name`, a.HouseholdID)
 	if e != nil {
 		fail(w, 500, e.Error())
 		return
@@ -102,26 +129,10 @@ func (s *Server) listProducts(w http.ResponseWriter, r *http.Request) {
 	out := []Product{}
 	for rows.Next() {
 		p, e := scanProduct(rows)
-		if e != nil {
-			continue
+		if e == nil {
+			s.fillProductStock(a.HouseholdID, &p)
+			out = append(out, p)
 		}
-		_ = s.store.DB.QueryRow(`SELECT COALESCE(SUM(quantity),0),COUNT(*) FROM batches WHERE product_id=?`, p.ID).Scan(&p.TotalQuantity, &p.BatchCount)
-		var level sql.NullString
-		_ = s.store.DB.QueryRow(`SELECT level FROM batches WHERE product_id=? AND level IS NOT NULL ORDER BY CASE level WHEN 'empty' THEN 0 WHEN 'low' THEN 1 WHEN 'half' THEN 2 ELSE 3 END LIMIT 1`, p.ID).Scan(&level)
-		if p.TrackingMode == "quantity" {
-			if p.TotalQuantity <= 0 {
-				p.StockState = "empty"
-			} else if p.LowThreshold != nil && p.TotalQuantity <= *p.LowThreshold {
-				p.StockState = "low"
-			} else {
-				p.StockState = "enough"
-			}
-		} else if level.Valid {
-			p.StockState = level.String
-		} else {
-			p.StockState = "empty"
-		}
-		out = append(out, p)
 	}
 	jsonOut(w, 200, out)
 }
@@ -142,6 +153,7 @@ func validateProduct(p *Product) error {
 	return nil
 }
 func (s *Server) createProduct(w http.ResponseWriter, r *http.Request) {
+	a := getActor(r)
 	var p Product
 	if decode(r, &p) != nil {
 		fail(w, 400, "请求格式错误")
@@ -153,14 +165,15 @@ func (s *Server) createProduct(w http.ResponseWriter, r *http.Request) {
 	}
 	p.ID = newID("prd")
 	t := now()
-	_, e := s.store.DB.Exec(`INSERT INTO products(id,name,category,default_unit,tracking_mode,low_threshold,after_open_days,barcode,favorite,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, p.ID, p.Name, p.Category, p.DefaultUnit, p.TrackingMode, p.LowThreshold, p.AfterOpenDays, p.Barcode, p.Favorite, t, t)
+	_, e := s.store.DB.Exec(`INSERT INTO products(id,household_id,name,category,default_unit,tracking_mode,low_threshold,after_open_days,barcode,favorite,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, p.ID, a.HouseholdID, p.Name, p.Category, p.DefaultUnit, p.TrackingMode, p.LowThreshold, p.AfterOpenDays, p.Barcode, p.Favorite, t, t)
 	if e != nil {
-		fail(w, 409, "条码已被其他商品使用")
+		fail(w, 409, "该家庭中条码已被使用")
 		return
 	}
 	jsonOut(w, 201, p)
 }
 func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
+	a := getActor(r)
 	var p Product
 	if decode(r, &p) != nil {
 		fail(w, 400, "请求格式错误")
@@ -171,9 +184,9 @@ func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.ID = chi.URLParam(r, "id")
-	res, e := s.store.DB.Exec(`UPDATE products SET name=?,category=?,default_unit=?,tracking_mode=?,low_threshold=?,after_open_days=?,barcode=?,favorite=?,updated_at=? WHERE id=?`, p.Name, p.Category, p.DefaultUnit, p.TrackingMode, p.LowThreshold, p.AfterOpenDays, p.Barcode, p.Favorite, now(), p.ID)
+	res, e := s.store.DB.Exec(`UPDATE products SET name=?,category=?,default_unit=?,tracking_mode=?,low_threshold=?,after_open_days=?,barcode=?,favorite=?,updated_at=? WHERE id=? AND household_id=?`, p.Name, p.Category, p.DefaultUnit, p.TrackingMode, p.LowThreshold, p.AfterOpenDays, p.Barcode, p.Favorite, now(), p.ID, a.HouseholdID)
 	if e != nil {
-		fail(w, 409, "条码已被其他商品使用")
+		fail(w, 409, "该家庭中条码已被使用")
 		return
 	}
 	n, _ := res.RowsAffected()
@@ -184,7 +197,8 @@ func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, 200, p)
 }
 func (s *Server) deleteProduct(w http.ResponseWriter, r *http.Request) {
-	res, _ := s.store.DB.Exec(`DELETE FROM products WHERE id=?`, chi.URLParam(r, "id"))
+	a := getActor(r)
+	res, _ := s.store.DB.Exec(`DELETE FROM products WHERE id=? AND household_id=?`, chi.URLParam(r, "id"), a.HouseholdID)
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		fail(w, 404, "商品不存在")
@@ -193,11 +207,13 @@ func (s *Server) deleteProduct(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
 func (s *Server) productByBarcode(w http.ResponseWriter, r *http.Request) {
-	p, e := scanProduct(s.store.DB.QueryRow(productSelect()+` WHERE barcode=?`, chi.URLParam(r, "code")))
+	a := getActor(r)
+	p, e := scanProduct(s.store.DB.QueryRow(productSelect()+` WHERE household_id=? AND barcode=?`, a.HouseholdID, chi.URLParam(r, "code")))
 	if e != nil {
 		fail(w, 404, "未找到该条码")
 		return
 	}
+	s.fillProductStock(a.HouseholdID, &p)
 	jsonOut(w, 200, p)
 }
 
@@ -205,7 +221,7 @@ func scanBatch(scanner interface{ Scan(...any) error }) (Batch, error) {
 	var b Batch
 	var q sql.NullFloat64
 	var level, expiry, opened sql.NullString
-	err := scanner.Scan(&b.ID, &b.ProductID, &b.LocationID, &q, &level, &expiry, &opened, &b.Note, &b.Version, &b.CreatedAt, &b.UpdatedAt, &b.ProductName, &b.LocationName, &b.Unit)
+	e := scanner.Scan(&b.ID, &b.ProductID, &b.LocationID, &q, &level, &expiry, &opened, &b.Note, &b.Version, &b.CreatedAt, &b.UpdatedAt, &b.ProductName, &b.LocationName, &b.Unit)
 	if q.Valid {
 		b.Quantity = &q.Float64
 	}
@@ -218,14 +234,14 @@ func scanBatch(scanner interface{ Scan(...any) error }) (Batch, error) {
 	if opened.Valid {
 		b.OpenedAt = &opened.String
 	}
-	return b, err
+	return b, e
 }
 func batchSelect() string {
-	return `SELECT b.id,b.product_id,b.location_id,b.quantity,b.level,b.expiry_date,b.opened_at,b.note,b.version,b.created_at,b.updated_at,p.name,l.name,p.default_unit FROM batches b JOIN products p ON p.id=b.product_id JOIN locations l ON l.id=b.location_id`
+	return `SELECT b.id,b.product_id,b.location_id,b.quantity,b.level,b.expiry_date,b.opened_at,b.note,b.version,b.created_at,b.updated_at,p.name,l.name,p.default_unit FROM batches b JOIN products p ON p.id=b.product_id AND p.household_id=b.household_id JOIN locations l ON l.id=b.location_id AND l.household_id=b.household_id`
 }
-func (s *Server) hydrateExpiry(b *Batch) {
+func (s *Server) hydrateExpiry(hid string, b *Batch) {
 	var days sql.NullInt64
-	_ = s.store.DB.QueryRow(`SELECT after_open_days FROM products WHERE id=?`, b.ProductID).Scan(&days)
+	_ = s.store.DB.QueryRow(`SELECT after_open_days FROM products WHERE id=? AND household_id=?`, b.ProductID, hid).Scan(&days)
 	effective := b.ExpiryDate
 	if b.OpenedAt != nil && days.Valid {
 		opened, e := time.Parse("2006-01-02", (*b.OpenedAt)[:10])
@@ -239,7 +255,7 @@ func (s *Server) hydrateExpiry(b *Batch) {
 	b.EffectiveExpiry = effective
 	if effective != nil {
 		today := time.Now().Format("2006-01-02")
-		warn := time.Now().AddDate(0, 0, s.warningDays()).Format("2006-01-02")
+		warn := time.Now().AddDate(0, 0, s.warningDays(hid)).Format("2006-01-02")
 		if *effective < today {
 			b.ExpiryStatus = "expired"
 		} else if *effective <= warn {
@@ -250,19 +266,16 @@ func (s *Server) hydrateExpiry(b *Batch) {
 	}
 }
 func (s *Server) listBatches(w http.ResponseWriter, r *http.Request) {
-	query := batchSelect()
-	args := []any{}
-	clauses := []string{}
+	a := getActor(r)
+	query := batchSelect() + ` WHERE b.household_id=?`
+	args := []any{a.HouseholdID}
 	if v := r.URL.Query().Get("product_id"); v != "" {
-		clauses = append(clauses, "b.product_id=?")
+		query += ` AND b.product_id=?`
 		args = append(args, v)
 	}
 	if v := r.URL.Query().Get("location_id"); v != "" {
-		clauses = append(clauses, "b.location_id=?")
+		query += ` AND b.location_id=?`
 		args = append(args, v)
-	}
-	if len(clauses) > 0 {
-		query += " WHERE " + strings.Join(clauses, " AND ")
 	}
 	query += ` ORDER BY COALESCE(b.expiry_date,'9999-12-31'),b.updated_at DESC`
 	rows, e := s.store.DB.Query(query, args...)
@@ -275,19 +288,20 @@ func (s *Server) listBatches(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		b, e := scanBatch(rows)
 		if e == nil {
-			s.hydrateExpiry(&b)
+			s.hydrateExpiry(a.HouseholdID, &b)
 			out = append(out, b)
 		}
 	}
 	jsonOut(w, 200, out)
 }
-func validateBatch(s *Store, b *Batch) error {
+func (s *Server) validateBatch(hid string, b *Batch) error {
 	var mode string
-	if e := s.DB.QueryRow(`SELECT tracking_mode FROM products WHERE id=?`, b.ProductID).Scan(&mode); e != nil {
+	if s.store.DB.QueryRow(`SELECT tracking_mode FROM products WHERE id=? AND household_id=?`, b.ProductID, hid).Scan(&mode) != nil {
 		return fmt.Errorf("商品不存在")
 	}
-	var x int
-	if e := s.DB.QueryRow(`SELECT COUNT(*) FROM locations WHERE id=?`, b.LocationID).Scan(&x); e != nil || x == 0 {
+	var count int
+	_ = s.store.DB.QueryRow(`SELECT COUNT(*) FROM locations WHERE id=? AND household_id=?`, b.LocationID, hid).Scan(&count)
+	if count == 0 {
 		return fmt.Errorf("位置不存在")
 	}
 	if mode == "quantity" {
@@ -311,23 +325,23 @@ func eventJSON(v any) *string {
 	s := string(b)
 	return &s
 }
-func (s *Server) recordEvent(tx *sql.Tx, action string, before, after *Batch) {
-	id := newID("evt")
+func (s *Server) recordEvent(tx *sql.Tx, hid, action string, before, after *Batch) {
 	bid := ""
 	if after != nil {
 		bid = after.ID
 	} else if before != nil {
 		bid = before.ID
 	}
-	_, _ = tx.Exec(`INSERT INTO inventory_events(id,action,batch_id,before_json,after_json,created_at) VALUES(?,?,?,?,?,?)`, id, action, bid, eventJSON(before), eventJSON(after), now())
+	_, _ = tx.Exec(`INSERT INTO inventory_events(id,household_id,action,batch_id,before_json,after_json,created_at) VALUES(?,?,?,?,?,?,?)`, newID("evt"), hid, action, bid, eventJSON(before), eventJSON(after), now())
 }
 func (s *Server) createBatch(w http.ResponseWriter, r *http.Request) {
+	a := getActor(r)
 	var b Batch
 	if decode(r, &b) != nil {
 		fail(w, 400, "请求格式错误")
 		return
 	}
-	if e := validateBatch(s.store, &b); e != nil {
+	if e := s.validateBatch(a.HouseholdID, &b); e != nil {
 		fail(w, 400, e.Error())
 		return
 	}
@@ -337,22 +351,23 @@ func (s *Server) createBatch(w http.ResponseWriter, r *http.Request) {
 	b.UpdatedAt = b.CreatedAt
 	tx, _ := s.store.DB.Begin()
 	defer tx.Rollback()
-	_, e := tx.Exec(`INSERT INTO batches(id,product_id,location_id,quantity,level,expiry_date,opened_at,note,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, b.ID, b.ProductID, b.LocationID, b.Quantity, b.Level, b.ExpiryDate, b.OpenedAt, b.Note, b.Version, b.CreatedAt, b.UpdatedAt)
+	_, e := tx.Exec(`INSERT INTO batches(id,household_id,product_id,location_id,quantity,level,expiry_date,opened_at,note,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, b.ID, a.HouseholdID, b.ProductID, b.LocationID, b.Quantity, b.Level, b.ExpiryDate, b.OpenedAt, b.Note, b.Version, b.CreatedAt, b.UpdatedAt)
 	if e != nil {
 		fail(w, 400, e.Error())
 		return
 	}
-	s.recordEvent(tx, "create", nil, &b)
+	s.recordEvent(tx, a.HouseholdID, "create", nil, &b)
 	_ = tx.Commit()
-	s.hydrateExpiry(&b)
+	s.hydrateExpiry(a.HouseholdID, &b)
 	jsonOut(w, 201, b)
 }
-func (s *Server) getBatch(id string) (Batch, error) {
-	return scanBatch(s.store.DB.QueryRow(batchSelect()+` WHERE b.id=?`, id))
+func (s *Server) getBatch(hid, id string) (Batch, error) {
+	return scanBatch(s.store.DB.QueryRow(batchSelect()+` WHERE b.household_id=? AND b.id=?`, hid, id))
 }
 func (s *Server) updateBatch(w http.ResponseWriter, r *http.Request) {
+	a := getActor(r)
 	id := chi.URLParam(r, "id")
-	before, e := s.getBatch(id)
+	before, e := s.getBatch(a.HouseholdID, id)
 	if e != nil {
 		fail(w, 404, "库存不存在")
 		return
@@ -366,7 +381,7 @@ func (s *Server) updateBatch(w http.ResponseWriter, r *http.Request) {
 	if b.Version == 0 {
 		b.Version = before.Version
 	}
-	if e = validateBatch(s.store, &b); e != nil {
+	if e = s.validateBatch(a.HouseholdID, &b); e != nil {
 		fail(w, 400, e.Error())
 		return
 	}
@@ -374,7 +389,7 @@ func (s *Server) updateBatch(w http.ResponseWriter, r *http.Request) {
 	b.UpdatedAt = now()
 	tx, _ := s.store.DB.Begin()
 	defer tx.Rollback()
-	res, e := tx.Exec(`UPDATE batches SET product_id=?,location_id=?,quantity=?,level=?,expiry_date=?,opened_at=?,note=?,version=version+1,updated_at=? WHERE id=? AND version=?`, b.ProductID, b.LocationID, b.Quantity, b.Level, b.ExpiryDate, b.OpenedAt, b.Note, b.UpdatedAt, id, b.Version)
+	res, e := tx.Exec(`UPDATE batches SET product_id=?,location_id=?,quantity=?,level=?,expiry_date=?,opened_at=?,note=?,version=version+1,updated_at=? WHERE id=? AND household_id=? AND version=?`, b.ProductID, b.LocationID, b.Quantity, b.Level, b.ExpiryDate, b.OpenedAt, b.Note, b.UpdatedAt, id, a.HouseholdID, b.Version)
 	if e != nil {
 		fail(w, 500, e.Error())
 		return
@@ -385,14 +400,15 @@ func (s *Server) updateBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b.Version++
-	s.recordEvent(tx, "update", &before, &b)
+	s.recordEvent(tx, a.HouseholdID, "update", &before, &b)
 	_ = tx.Commit()
-	s.hydrateExpiry(&b)
+	s.hydrateExpiry(a.HouseholdID, &b)
 	jsonOut(w, 200, b)
 }
 func (s *Server) deleteBatch(w http.ResponseWriter, r *http.Request) {
+	a := getActor(r)
 	id := chi.URLParam(r, "id")
-	before, e := s.getBatch(id)
+	before, e := s.getBatch(a.HouseholdID, id)
 	if e != nil {
 		fail(w, 404, "库存不存在")
 		return
@@ -403,28 +419,30 @@ func (s *Server) deleteBatch(w http.ResponseWriter, r *http.Request) {
 	}
 	tx, _ := s.store.DB.Begin()
 	defer tx.Rollback()
-	res, _ := tx.Exec(`DELETE FROM batches WHERE id=? AND version=?`, id, version)
+	res, _ := tx.Exec(`DELETE FROM batches WHERE id=? AND household_id=? AND version=?`, id, a.HouseholdID, version)
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		fail(w, 409, "库存已被其他成员修改，请刷新后重试")
 		return
 	}
-	s.recordEvent(tx, "delete", &before, nil)
+	s.recordEvent(tx, a.HouseholdID, "delete", &before, nil)
 	_ = tx.Commit()
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
 func (s *Server) openBatch(w http.ResponseWriter, r *http.Request) {
-	b, e := s.getBatch(chi.URLParam(r, "id"))
+	a := getActor(r)
+	b, e := s.getBatch(a.HouseholdID, chi.URLParam(r, "id"))
 	if e != nil {
 		fail(w, 404, "库存不存在")
 		return
 	}
 	d := time.Now().Format("2006-01-02")
 	b.OpenedAt = &d
-	s.updateBatchValue(w, r, b)
+	s.updateBatchValue(w, r, a.HouseholdID, b)
 }
 func (s *Server) adjustBatch(w http.ResponseWriter, r *http.Request) {
-	b, e := s.getBatch(chi.URLParam(r, "id"))
+	a := getActor(r)
+	b, e := s.getBatch(a.HouseholdID, chi.URLParam(r, "id"))
 	if e != nil {
 		fail(w, 404, "库存不存在")
 		return
@@ -453,58 +471,58 @@ func (s *Server) adjustBatch(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "没有可调整的值")
 		return
 	}
-	s.updateBatchValue(w, r, b)
+	s.updateBatchValue(w, r, a.HouseholdID, b)
 }
-func (s *Server) updateBatchValue(w http.ResponseWriter, r *http.Request, b Batch) {
-	before, e := s.getBatch(b.ID)
+func (s *Server) updateBatchValue(w http.ResponseWriter, r *http.Request, hid string, b Batch) {
+	before, e := s.getBatch(hid, b.ID)
 	if e != nil {
 		fail(w, 404, "库存不存在")
 		return
 	}
-	if e = validateBatch(s.store, &b); e != nil {
+	if e = s.validateBatch(hid, &b); e != nil {
 		fail(w, 400, e.Error())
 		return
 	}
 	b.UpdatedAt = now()
 	tx, _ := s.store.DB.Begin()
 	defer tx.Rollback()
-	res, _ := tx.Exec(`UPDATE batches SET quantity=?,level=?,opened_at=?,version=version+1,updated_at=? WHERE id=? AND version=?`, b.Quantity, b.Level, b.OpenedAt, b.UpdatedAt, b.ID, b.Version)
+	res, _ := tx.Exec(`UPDATE batches SET quantity=?,level=?,opened_at=?,version=version+1,updated_at=? WHERE id=? AND household_id=? AND version=?`, b.Quantity, b.Level, b.OpenedAt, b.UpdatedAt, b.ID, hid, b.Version)
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		fail(w, 409, "库存已被其他成员修改，请刷新后重试")
 		return
 	}
 	b.Version++
-	s.recordEvent(tx, "adjust", &before, &b)
+	s.recordEvent(tx, hid, "adjust", &before, &b)
 	_ = tx.Commit()
-	s.hydrateExpiry(&b)
+	s.hydrateExpiry(hid, &b)
 	jsonOut(w, 200, b)
 }
-
 func (s *Server) undoEvent(w http.ResponseWriter, r *http.Request) {
+	a := getActor(r)
 	id := chi.URLParam(r, "id")
-	var beforeJSON, afterJSON sql.NullString
+	var beforeJSON sql.NullString
 	var batchID string
 	var undone int
-	e := s.store.DB.QueryRow(`SELECT batch_id,before_json,after_json,undone FROM inventory_events WHERE id=?`, id).Scan(&batchID, &beforeJSON, &afterJSON, &undone)
-	if e != nil || undone == 1 {
+	if s.store.DB.QueryRow(`SELECT batch_id,before_json,undone FROM inventory_events WHERE id=? AND household_id=?`, id, a.HouseholdID).Scan(&batchID, &beforeJSON, &undone) != nil || undone == 1 {
 		fail(w, 400, "操作无法撤销")
 		return
 	}
 	tx, _ := s.store.DB.Begin()
 	defer tx.Rollback()
+	var e error
 	if !beforeJSON.Valid {
-		_, e = tx.Exec(`DELETE FROM batches WHERE id=?`, batchID)
+		_, e = tx.Exec(`DELETE FROM batches WHERE id=? AND household_id=?`, batchID, a.HouseholdID)
 	} else {
 		var b Batch
 		_ = json.Unmarshal([]byte(beforeJSON.String), &b)
-		_, e = tx.Exec(`INSERT INTO batches(id,product_id,location_id,quantity,level,expiry_date,opened_at,note,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET product_id=excluded.product_id,location_id=excluded.location_id,quantity=excluded.quantity,level=excluded.level,expiry_date=excluded.expiry_date,opened_at=excluded.opened_at,note=excluded.note,version=batches.version+1,updated_at=excluded.updated_at`, b.ID, b.ProductID, b.LocationID, b.Quantity, b.Level, b.ExpiryDate, b.OpenedAt, b.Note, b.Version, b.CreatedAt, now())
+		_, e = tx.Exec(`INSERT INTO batches(id,household_id,product_id,location_id,quantity,level,expiry_date,opened_at,note,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET product_id=excluded.product_id,location_id=excluded.location_id,quantity=excluded.quantity,level=excluded.level,expiry_date=excluded.expiry_date,opened_at=excluded.opened_at,note=excluded.note,version=batches.version+1,updated_at=excluded.updated_at`, b.ID, a.HouseholdID, b.ProductID, b.LocationID, b.Quantity, b.Level, b.ExpiryDate, b.OpenedAt, b.Note, b.Version, b.CreatedAt, now())
 	}
 	if e != nil {
 		fail(w, 409, "当前库存状态无法撤销")
 		return
 	}
-	_, _ = tx.Exec(`UPDATE inventory_events SET undone=1 WHERE id=?`, id)
+	_, _ = tx.Exec(`UPDATE inventory_events SET undone=1 WHERE id=? AND household_id=?`, id, a.HouseholdID)
 	_ = tx.Commit()
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }

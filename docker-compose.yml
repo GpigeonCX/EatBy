@@ -1,14 +1,26 @@
 services:
   app:
+    image: ${EATBY_IMAGE:-eatby:local}
     build: .
     restart: unless-stopped
+    env_file:
+      - ${EATBY_ENV_FILE:-.env}
+    environment:
+      PANTRY_DATA: /data
+      TZ: Asia/Shanghai
     volumes:
-      - pantry-data:/data
+      - ${EATBY_DATA_DIR:-./production-data}:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
   caddy:
     image: caddy:2.10-alpine
     restart: unless-stopped
     environment:
-      DOMAIN: ${DOMAIN:-localhost}
+      DOMAIN: ${DOMAIN}
     ports:
       - "80:80"
       - "443:443"
@@ -17,8 +29,8 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
-      - app
+      app:
+        condition: service_healthy
 volumes:
-  pantry-data:
   caddy-data:
   caddy-config:

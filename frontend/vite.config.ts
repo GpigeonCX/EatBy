@@ -13,7 +13,7 @@ export default defineConfig({
         theme_color: '#245b45', background_color: '#f6f4ed', display: 'standalone',
         icons: [{ src: '/pantry.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }]
       },
-      workbox: { navigateFallback: '/index.html', runtimeCaching: [{ urlPattern: /\/api\/v1\/(dashboard|locations|products|batches)/, handler: 'NetworkFirst', options: { cacheName: 'pantry-data', expiration: { maxEntries: 20, maxAgeSeconds: 86400 } } }] }
+      workbox: { navigateFallback: '/index.html' }
     })
   ],
   server: { proxy: { '/api': 'http://localhost:8080', '/healthz': 'http://localhost:8080' } },

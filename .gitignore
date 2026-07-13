@@ -1,5 +1,8 @@
 .idea/
 data/
+production-data/
+dev-data/
+.env
 frontend/node_modules/
 frontend/.vite/
 frontend/*.tsbuildinfo

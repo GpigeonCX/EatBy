@@ -2,14 +2,15 @@
 
 build:
 	cd frontend && npm run build
-	go build -o bin/pantry ./cmd/server
+	GOCACHE=$${GOCACHE:-/tmp/eatby-go-cache} go build -o bin/pantry ./cmd/server
 
 test:
-	go test ./...
+	GOCACHE=$${GOCACHE:-/tmp/eatby-go-cache} go test ./...
+	cd frontend && npm test
 	cd frontend && npm run build
 
 dev:
-	go run ./cmd/server -data ./data
+	EATBY_ADMIN_USERNAME=$${EATBY_ADMIN_USERNAME:-admin} EATBY_ADMIN_PASSWORD=$${EATBY_ADMIN_PASSWORD:-change-this-password} go run ./cmd/server -data ./dev-data
 
 clean:
 	rm -rf bin frontend/dist
