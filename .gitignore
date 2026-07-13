@@ -1,0 +1,9 @@
+.idea/
+data/
+frontend/node_modules/
+frontend/.vite/
+frontend/*.tsbuildinfo
+*.db
+*.db-shm
+*.db-wal
+.DS_Store

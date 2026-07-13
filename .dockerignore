@@ -1,0 +1,9 @@
+.git
+.idea
+data
+frontend/node_modules
+frontend/.vite
+*.db
+*.db-shm
+*.db-wal
+README.md
