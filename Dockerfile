@@ -7,6 +7,8 @@ COPY cmd/server/web/ /src/cmd/server/web/
 RUN npm run build
 
 FROM golang:1.24-alpine AS backend
+ARG GOPROXY=https://goproxy.cn,direct
+ENV GOPROXY=${GOPROXY}
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
