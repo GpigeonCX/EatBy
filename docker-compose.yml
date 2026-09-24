@@ -17,7 +17,7 @@ services:
       retries: 3
       start_period: 10s
   caddy:
-    image: caddy:2.10-alpine
+    image: ${CADDY_IMAGE:-docker.m.daocloud.io/library/caddy:2.10-alpine}
     restart: unless-stopped
     environment:
       DOMAIN: ${DOMAIN}
