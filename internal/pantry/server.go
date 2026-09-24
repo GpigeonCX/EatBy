@@ -80,6 +80,12 @@ func NewServer(store *Store, web fs.FS) http.Handler {
 					r.Delete("/{id}", s.deleteShopping)
 					r.Post("/from-product/{id}", s.shoppingFromProduct)
 				})
+				r.Route("/todos", func(r chi.Router) {
+					r.Get("/", s.listTodos)
+					r.Post("/", s.createTodo)
+					r.Put("/{id}", s.updateTodo)
+					r.Delete("/{id}", s.deleteTodo)
+				})
 				r.Post("/events/{id}/undo", s.undoEvent)
 				r.Get("/settings", s.getSettings)
 				r.Put("/settings", s.updateSettings)

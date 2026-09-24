@@ -10,9 +10,9 @@ EatBy 是一个手机优先的家庭食材、库存、保质期和采购清单�
 - 冰箱、冷冻室、橱柜等自定义位置
 - 数量模式和“充足/一半/快没了/用完”状态模式
 - 同商品多批次、包装到期日、开封后期限和临期预警
-- 条码建档、采购清单、低库存提醒和库存操作撤销
+- 条码建档、采购清单、待办清单、低库存提醒和库存操作撤销
 - 家庭隔离的 Kindle 只读链接
-- SQLite WAL、每日一致性备份和 OSS 异地备份脚本
+- SQLite WAL、每日一致性备份（OSS 异地备份为可选项）
 
 ## 本地开发
 
@@ -47,7 +47,7 @@ make dev
 
 单家庭旧版 `data/pantry.db` 不会自动迁移。多家庭版本应使用新的空目录，例如 `dev-data` 或 `production-data`。
 
-## 阿里云大陆部署
+## 阿里云大陆部署（单容器 + SQLite）
 
 推荐购买阿里云轻量应用服务器：2 核、4GB 内存、60GB 以上 SSD、5Mbps 以上带宽、Ubuntu 24.04 LTS。实例防火墙只开放 22、80、443，22 端口限制为自己的公网 IP。
 
@@ -72,7 +72,7 @@ cd /opt/eatby
 cp .env.example .env
 ```
 
-编辑 `/opt/eatby/.env`：
+编辑 `/opt/eatby/.env`（只需要域名和管理员账号密码；不需要数据库或 OSS）：
 
 ```dotenv
 DOMAIN=eatby.example.com
@@ -81,7 +81,7 @@ EATBY_IMAGE=eatby:local
 EATBY_ADMIN_USERNAME=admin
 EATBY_ADMIN_PASSWORD=使用密码管理器生成的长随机密码
 EATBY_ICP_NUMBER=京ICP备xxxxxxxx号
-OSS_BUCKET=your-private-backup-bucket
+OSS_BUCKET=
 ```
 
 首次发布：
@@ -109,9 +109,9 @@ docker compose ps
 
 建议每次稳定发布创建 Git 标签。回滚代码时切换到旧标签并重新构建；如新版本修改过数据库结构，同时恢复发布前 SQLite 备份。
 
-## OSS 异地备份
+## 备份
 
-应用每天凌晨 3 点生成一致性 SQLite 快照，本机保留 14 份。安装并配置阿里云 `ossutil` 后，可在服务器加入凌晨 4 点的定时任务：
+应用每天凌晨 3 点生成一致性 SQLite 快照，本机保留 14 份，数据全部位于 `EATBY_DATA_DIR`。两个人日常使用时不需要 OSS；如果需要异地容灾，再按下面方式启用 OSS：
 
 ```cron
 0 4 * * * cd /opt/eatby && set -a && . ./.env && set +a && ./deploy/backup-to-oss.sh >> /var/log/eatby-backup.log 2>&1

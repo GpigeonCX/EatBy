@@ -45,6 +45,12 @@ type ShoppingItem struct {
 	Unit      *string  `json:"unit"`
 	Checked   bool     `json:"checked"`
 }
+type TodoItem struct {
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Note    string `json:"note"`
+	Checked bool   `json:"checked"`
+}
 type UserSummary struct {
 	ID                 string `json:"id"`
 	Username           string `json:"username"`

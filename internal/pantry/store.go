@@ -151,6 +151,11 @@ CREATE TABLE IF NOT EXISTS shopping_items (
  product_id TEXT REFERENCES products(id) ON DELETE SET NULL, name TEXT NOT NULL, quantity REAL, unit TEXT,
  checked INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS todo_items (
+ id TEXT PRIMARY KEY, household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+ title TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', checked INTEGER NOT NULL DEFAULT 0,
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS inventory_events (
  id TEXT PRIMARY KEY, household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
  action TEXT NOT NULL, batch_id TEXT NOT NULL, before_json TEXT, after_json TEXT,
