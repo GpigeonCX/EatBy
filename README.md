@@ -97,6 +97,11 @@ Caddy 会自动申请 HTTPS 证书。应用端口 8080 不对公网暴露，SQLi
 
 ## 手动更新与回滚
 
+**现有生产环境的实际发布流程、一次性源码整理、自动发布条件及回滚步骤见
+[发布运维手册](deploy/DEPLOYMENT.md)。** Kindle 设备安装与验证边界见
+[Kindle 看板说明](deploy/kindle/README.md)。
+
+
 发布前先等待或手工保留一份 `production-data/backups/` 中的数据库快照，然后执行：
 
 ```bash
@@ -151,7 +156,7 @@ ghcr.io/gpigeoncx/eatby:latest
 - Actions Variable：`AUTO_DEPLOY=true`
 - Actions Secrets：`DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`
 
-之后 `main` 构建成功会通过 SSH 更新 `/opt/eatby` 并部署对应提交镜像。生产 `.env`、数据库和 OSS 凭据始终只保存在服务器。
+之后 `main` 构建成功会通过 SSH 更新 `/opt/eatby` 并部署对应提交镜像。提交消息包含 `[skip deploy]` 时只测试/发布镜像，不部署线上。服务器工作区必须无冲突；当前开发同步遗留修改的处理方式见发布运维手册。生产 `.env`、数据库和 OSS 凭据始终只保存在服务器。
 
 ## 验证
 

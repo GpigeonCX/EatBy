@@ -128,6 +128,14 @@ CREATE TABLE IF NOT EXISTS display_tokens (
  id TEXT PRIMARY KEY, household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
  token_hash TEXT UNIQUE NOT NULL, name TEXT NOT NULL, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS kindle_pairings (
+ secret_hash TEXT PRIMARY KEY, code_hash TEXT UNIQUE NOT NULL,
+ expires_at INTEGER NOT NULL, claimed_id TEXT REFERENCES display_tokens(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS display_schedules (
+ display_id TEXT PRIMARY KEY REFERENCES display_tokens(id) ON DELETE CASCADE,
+ schedule_json TEXT NOT NULL, updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS locations (
  id TEXT PRIMARY KEY, household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
  name TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,

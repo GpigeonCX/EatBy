@@ -24,6 +24,14 @@ type actorKey struct{}
 
 var usernamePattern = regexp.MustCompile(`^[a-z0-9_.-]{3,32}$`)
 
+// Display links use 128 random bits (22 URL-safe characters), never sequential IDs.
+func randomDisplayToken() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
+}
 func randomToken() string {
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)

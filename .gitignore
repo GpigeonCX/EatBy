@@ -10,3 +10,8 @@ frontend/*.tsbuildinfo
 *.db-shm
 *.db-wal
 .DS_Store
+__pycache__/
+*.py[cod]
+# Device-local read-only credentials; never version these.
+image-url.txt
+display-link.txt

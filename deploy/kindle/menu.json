@@ -1,0 +1,34 @@
+{
+  "items": [
+    {"name":"EatBy: APPLY display optimization","action":"sh /mnt/us/eatby/apply-display-update.sh","exitmenu":true,"refresh":false},
+    {"name":"EatBy: START battery dashboard","action":"sh /mnt/us/eatby/battery-agent.sh start","exitmenu":true,"refresh":false},
+    {"name":"EatBy: STOP battery dashboard","action":"sh /mnt/us/eatby/battery-agent.sh stop"},
+    {"name":"EatBy: inspect last cycle (read only)","action":"timeout 25 sh /mnt/us/eatby/cycle-inspect.sh"},
+    {"name":"EatBy: TEST one battery dashboard cycle","action":"sh /mnt/us/eatby/exclusive-test.sh cycle","exitmenu":true,"refresh":false},
+    {"name":"EatBy: TEST RTC1 sleep wake (90 sec)","action":"sh /mnt/us/eatby/rtc1-sleep-test.sh","exitmenu":true,"refresh":false},
+    {"name":"EatBy: TEST RTC1 while awake (45 sec)","action":"sh /mnt/us/eatby/rtc1-check.sh","exitmenu":true,"refresh":false},
+    {"name":"EatBy: collect wake diagnostics (read only)","action":"sh /mnt/us/eatby/wake-diagnostics.sh"},
+    {"name":"EatBy: TEST hide system bar (90 sec)","action":"sh /mnt/us/eatby/exclusive-test.sh","exitmenu":true,"refresh":false},
+    {"name":"EatBy: pair device","action":"sh /mnt/us/eatby/pair.sh","exitmenu":true,"refresh":false},
+    {
+      "name": "EatBy: import display link",
+      "action": "sh /mnt/us/eatby/import-link.sh"
+    },
+    {
+      "name": "EatBy: refresh dashboard",
+      "action": "sh /mnt/us/eatby/refresh.sh",
+      "exitmenu": true,
+      "refresh": false
+    },
+    {
+      "name": "EatBy: screen test (600x800)",
+      "action": "sh /mnt/us/eatby/screen-test.sh",
+      "exitmenu": true,
+      "refresh": false
+    },
+    {
+      "name": "EatBy: device capability probe",
+      "action": "sh /mnt/us/eatby/probe.sh"
+    }
+  ]
+}

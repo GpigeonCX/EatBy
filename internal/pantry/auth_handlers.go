@@ -318,7 +318,7 @@ func (s *Server) createDisplayToken(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(in.Name) == "" {
 		in.Name = "Kindle"
 	}
-	token := randomToken()
+	token := randomDisplayToken()
 	id := newID("dsp")
 	_, e := s.store.DB.Exec(`INSERT INTO display_tokens(id,household_id,token_hash,name,created_at) VALUES(?,?,?,?,?)`, id, a.HouseholdID, hashToken(token), in.Name, now())
 	if e != nil {

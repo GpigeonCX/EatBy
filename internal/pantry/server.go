@@ -43,8 +43,12 @@ func NewServer(store *Store, web fs.FS) http.Handler {
 		r.Post("/auth/login", s.login)
 		r.Post("/auth/logout", s.logout)
 		r.Post("/register", s.registerHousehold)
+		r.Post("/kindle-pairings", s.startKindlePairing)
+		r.Get("/kindle-pairings/status", s.pollKindlePairing)
 		r.Post("/household-invites/{token}/accept", s.acceptHouseholdInvite)
 		r.Get("/display/{token}", s.displaySummary)
+		r.Get("/display/{token}/config", s.deviceSchedule)
+		r.Get("/display/{token}/image.png", s.deviceImage)
 		r.Group(func(r chi.Router) {
 			r.Use(s.authenticate)
 			r.Get("/me", s.me)
@@ -95,7 +99,10 @@ func NewServer(store *Store, web fs.FS) http.Handler {
 				r.Delete("/members/{id}", s.deleteMember)
 				r.Post("/household-invites", s.createHouseholdInvite)
 				r.Post("/display-tokens", s.createDisplayToken)
+				r.Post("/kindle-pairings/claim", s.claimKindlePairing)
 				r.Get("/display-tokens", s.listDisplayTokens)
+				r.Get("/display-tokens/{id}/schedule", s.getDisplaySchedule)
+				r.Put("/display-tokens/{id}/schedule", s.putDisplaySchedule)
 				r.Delete("/display-tokens/{id}", s.deleteDisplayToken)
 			})
 			r.Route("/admin", func(r chi.Router) {
@@ -109,6 +116,7 @@ func NewServer(store *Store, web fs.FS) http.Handler {
 			})
 		})
 	})
+	r.Get("/d/{token}", s.serveWeb)
 	r.NotFound(s.serveWeb)
 	return r
 }
