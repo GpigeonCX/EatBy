@@ -247,6 +247,30 @@ func (s *Server) listMembers(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonOut(w, 200, out)
 }
+func (s *Server) promoteMemberToOwner(w http.ResponseWriter, r *http.Request) {
+	a := getActor(r)
+	if a.Role != "owner" {
+		fail(w, 403, "仅户主可设置户主")
+		return
+	}
+	// One household-scoped update; repeating an already completed promotion is safe.
+	result, err := s.store.DB.Exec(`UPDATE users SET role='owner' WHERE id=? AND household_id=? AND role IN ('member','owner') AND status='active'`, chi.URLParam(r, "id"), a.HouseholdID)
+	if err != nil {
+		fail(w, 500, "设置户主失败")
+		return
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		fail(w, 500, "设置户主失败")
+		return
+	}
+	if count == 0 {
+		fail(w, 404, "成员不存在或已停用")
+		return
+	}
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
 func (s *Server) deleteMember(w http.ResponseWriter, r *http.Request) {
 	a := getActor(r)
 	if a.Role != "owner" {

@@ -97,6 +97,7 @@ func NewServer(store *Store, web fs.FS) http.Handler {
 				r.Delete("/sessions/{id}", s.deleteSession)
 				r.Get("/members", s.listMembers)
 				r.Delete("/members/{id}", s.deleteMember)
+				r.Post("/members/{id}/promote-owner", s.promoteMemberToOwner)
 				r.Post("/household-invites", s.createHouseholdInvite)
 				r.Post("/display-tokens", s.createDisplayToken)
 				r.Post("/kindle-pairings/claim", s.claimKindlePairing)
