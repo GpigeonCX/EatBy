@@ -30,8 +30,16 @@ case "$battery" in ''|*[!0-9]*) ;; *)
  fi;;
 esac
 # No redirect following, no insecure TLS, bounded connect/transfer/retries.
-if ! curl --fail --silent --show-error --connect-timeout 15 --max-time 60 --retry 1 --max-filesize 2000000 -D "$BASE/cache/headers.tmp" -o "$BASE/cache/download.png" "$URL"; then
- echo 'Download failed; retaining previous screen and cache.'; exit 1
+result=0
+http=$(curl --fail --silent --show-error --connect-timeout 15 --max-time 60 --retry 1 --max-filesize 2000000 -w '%{http_code}' -D "$BASE/cache/headers.tmp" -o "$BASE/cache/download.png" "$URL") || result=$?
+if [ "$result" != 0 ]; then
+ echo "Download failed: curl=$result HTTP=$http; retaining cache."
+ # Exit 69 means temporary connectivity/service failure, not invalid credentials.
+ case "$result" in
+  5|6|7|18|28|35|52|55|56) exit 69;;
+  22) case "$http" in 408|429|5[0-9][0-9]) exit 69;; esac;;
+ esac
+ exit 1
 fi
 signature=$(od -An -tx1 -N8 "$BASE/cache/download.png" | tr -d ' \n')
 geometry=$(dd if="$BASE/cache/download.png" bs=1 skip=16 count=8 2>/dev/null | od -An -tx1 | tr -d ' \n')

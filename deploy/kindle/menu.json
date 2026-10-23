@@ -1,6 +1,6 @@
 {
   "items": [
-    {"name":"EatBy: APPLY display optimization","action":"sh /mnt/us/eatby/apply-display-update.sh","exitmenu":true,"refresh":false},
+    {"name":"EatBy: APPLY offline recovery update","action":"sh /mnt/us/eatby/apply-display-update.sh","exitmenu":true,"refresh":false},
     {"name":"EatBy: START battery dashboard","action":"sh /mnt/us/eatby/battery-agent.sh start","exitmenu":true,"refresh":false},
     {"name":"EatBy: STOP battery dashboard","action":"sh /mnt/us/eatby/battery-agent.sh stop"},
     {"name":"EatBy: inspect last cycle (read only)","action":"timeout 25 sh /mnt/us/eatby/cycle-inspect.sh"},

@@ -22,9 +22,11 @@ class DisplayUpdateTests(unittest.TestCase):
                 p.write_text('#!/bin/sh\n' + body + '\n')
                 p.chmod(0o755)
             manifest = []
-            for name in ('wake-test.sh', 'refresh.sh'):
+            files = ('wake-test.sh', 'refresh.sh', 'battery-agent.sh')
+            for name in files:
                 (base / name).write_text('#!/bin/sh\n# old\n')
                 data = b'#!/bin/sh\n# new\n'
+                if name == 'battery-agent.sh': data += b'touch "$ROOT/restarted"\n'
                 (stage / name).write_bytes(data)
                 manifest.append(hashlib.sha256(data).hexdigest() + '  ' + name)
             (stage / 'SHA256SUMS').write_text('\n'.join(manifest) + '\n')
@@ -33,7 +35,6 @@ class DisplayUpdateTests(unittest.TestCase):
             if mode in ('running', 'stuck'):
                 (root / 'agent').mkdir()
             (base / 'image-url.txt').write_text('private-placeholder')
-            (base / 'battery-agent.sh').write_text('#!/bin/sh\ntouch "$ROOT/restarted"\n')
             source = Path(__file__).with_name('apply-display-update.sh').read_text()
             source = source.replace('BASE=/mnt/us/eatby', f'BASE="{base}"')
             source = source.replace('LOCK=/tmp/eatby-display-update', f'LOCK="{root / "lock"}"')
@@ -49,10 +50,10 @@ class DisplayUpdateTests(unittest.TestCase):
             self.assertEqual((base / 'image-url.txt').read_text(), 'private-placeholder')
             self.assertEqual((root / 'restarted').exists(), mode == 'running')
             self.assertFalse((root / 'lock').exists())
-            for name in ('wake-test.sh', 'refresh.sh'):
+            for name in files:
                 self.assertIn('# new' if success else '# old', (base / name).read_text())
                 if success:
-                    self.assertIn('# old', (base / 'backup-display-v1' / name).read_text())
+                    self.assertIn('# old', (base / 'backup-network-v2' / name).read_text())
 
     def test_stopped_agent_stays_stopped(self): self.run_case('stopped')
     def test_running_agent_stops_before_update_and_restarts(self): self.run_case('running')

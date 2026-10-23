@@ -19,9 +19,13 @@ class AgentTests(unittest.TestCase):
             (run / 'guard-pid').write_text(str(os.getpid()))
             (run / 'restore-statusbar').touch()
             (root / 'count').write_text('0')
+            if mode.startswith('offline') and mode != 'offline_missing':
+                (base / 'cache/current.png').write_bytes(b'mock cached image')
+                (base / 'cache/headers.txt').write_text('X-Eatby-Server-Time: 1\nX-Eatby-Next-Refresh: 0\n')
             (root / 'bar').touch()
             tools = {
                 'fbink': ':', 'sleep': ':', 'timeout': 'shift; exec "$@"',
+                'eips': '[ "$MODE" != offline_badcache ]',
                 'initctl': '[ -f "$ROOT/bar" ] && echo "statusbar start/running" || echo "statusbar stop/waiting"',
                 'stop': 'echo "$1" >> "$ROOT/stops"; rm -f "$ROOT/bar"',
                 'start': 'touch "$ROOT/bar"',
@@ -33,6 +37,7 @@ class AgentTests(unittest.TestCase):
             (base / 'refresh.sh').write_text('''#!/bin/sh
 n=$(head -n 1 "$ROOT/count"); n=$((n+1)); echo "$n" > "$ROOT/count"
 [ "$MODE" != network_fail ] || exit 1
+case "$MODE" in offline*) limit=2; [ "$MODE" != offline_extended ] || limit=4; [ "$n" -gt "$limit" ] || exit 69;; esac
 server=$(date +%s); next=$((server+1800))
 [ "$n" -lt 2 ] || next=0
 printf 'X-Eatby-Server-Time: %s\r\nX-Eatby-Next-Refresh: %s\r\n' "$server" "$next" > "$ROOT/eatby/cache/headers.txt"
@@ -42,6 +47,7 @@ printf 'X-Eatby-Server-Time: %s\r\nX-Eatby-Next-Refresh: %s\r\n' "$server" "$nex
 now=$(date +%s)
 [ "$EATBY_NEXT_LOCAL" -ge "$((now+1700))" ] || exit 5
 echo sleep >> "$ROOT/sleeps"
+[ "$MODE" != offline_stop ] || touch "$ROOT/run/stop"
 rm -rf "$ROOT/wake-lock"
 ''')
             source = Path(__file__).with_name('battery-agent.sh').read_text()
@@ -63,13 +69,22 @@ rm -rf "$ROOT/wake-lock"
                 self.assertFalse(run.exists())
                 self.assertTrue((root / 'bar').exists())
             else:
-                self.assertEqual((root / 'count').read_text().strip(), '2')
+                expected = {'network_fail': 1, 'offline_retry': 3, 'offline_extended': 5}.get(mode, 2)
+                self.assertEqual(int((root / 'count').read_text()), expected)
                 self.assertEqual((root / 'stops').read_text().strip(), 'statusbar')
-                self.assertEqual(result.returncode, 1 if mode == 'network_fail' else 0, result.stderr)
-                if mode != 'network_fail':
-                    self.assertEqual((root / 'sleeps').read_text().splitlines(), ['sleep'])
-                    self.assertIn('schedule paused', result.stdout)
+                failed = mode in ('network_fail', 'offline_missing', 'offline_badcache')
+                self.assertEqual(result.returncode, 1 if failed else 0, result.stderr)
+                if not failed:
+                    self.assertEqual((root / 'sleeps').read_text().splitlines(), ['sleep'] * (2 if mode == 'offline_extended' else 1))
+                    if mode != 'offline_stop': self.assertIn('schedule paused', result.stdout)
+                else:
+                    self.assertFalse((root / 'sleeps').exists())
 
     def test_scheduled_sleep_then_pause(self): self.run_case('normal')
     def test_network_failure_is_bounded(self): self.run_case('network_fail')
     def test_guard_restores_after_worker_exit(self): self.run_case('guard')
+    def test_offline_cache_deep_sleep_recovery(self): self.run_case('offline_retry')
+    def test_sustained_outage_sleeps_between_attempts(self): self.run_case('offline_extended')
+    def test_offline_stop_is_respected(self): self.run_case('offline_stop')
+    def test_offline_without_cache_exits(self): self.run_case('offline_missing')
+    def test_offline_invalid_cache_exits(self): self.run_case('offline_badcache')

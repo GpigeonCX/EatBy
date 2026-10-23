@@ -1,5 +1,30 @@
 # Kindle 8 integration
 
+## Offline recovery staged after observed DNS-exit failure (2026-10-21)
+
+Device confirms prior cached-frame update installed. Latest wake: estimated
+3459s suspended, RTC1 IRQ 22→23, deadline +1s, cached repaint before suspend
+and after wake. At 13:00:15 UTC refresh failed with curl (6) DNS resolution;
+13:00:17 guard restored statusbar after worker exited. Thus sustained native
+screensaver can result from intentionally leaving dashboard mode on transient
+network failure, not from failure to enter deep sleep. Earlier cycles show the
+same failure; USB attachment also previously caused stale file handles.
+
+Refresh now returns 69 only for selected transient curl failures, HTTP 408/429
+or 5xx. Auth/not-found/bad TLS/invalid PNG remain terminal. Agent retries once,
+then if a decoded cached frame is available, retains it and uses the existing
+RTC sleep path to retry in 30 minutes. Does not reuse expired schedule headers,
+busy-poll networking, inhibit suspend or touch blanket/framework. Offline retries
+may fall outside normal scheduled windows; schedule resumes on next good response.
+Stop and watchdog restoration unchanged. Cache timestamp remains old, honestly
+indicating data age. No cache/invalid image still exits instead of a blank kiosk.
+
+36 mocks pass: transient/permanent classification, cache/header preservation,
+multiple offline sleep cycles, recovery, Stop and missing/bad cache, plus existing
+RTC and guard cases. Three-file package staged via existing safe installer, KUAL
+`APPLY offline recovery update`; backups in backup-network-v2. No active device
+scripts overwritten; new offline behavior awaits physical installation/test.
+
 ## Cached-frame transition optimization staged
 
 User observed two automatic cycles working, but native screensaver remained

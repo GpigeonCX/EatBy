@@ -14,7 +14,8 @@ fi
 trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
 say() { /mnt/us/libkh/bin/fbink -q -m -y 12 "$1" || true; }
 sleep 3
-for name in wake-test.sh refresh.sh; do
+FILES='wake-test.sh refresh.sh battery-agent.sh'
+for name in $FILES; do
  if [ ! -s "$STAGE/$name" ]; then say 'Update package missing.';exit 1;fi
  sh -n "$STAGE/$name"
 done
@@ -33,14 +34,14 @@ fi
 if [ -d /tmp/eatby-exclusive-test ] || [ -d /tmp/eatby-wake-test ] || [ -d /tmp/eatby-refresh.lock ]; then
  say 'Another test/refresh is active. Update cancelled.';exit 1
 fi
-mkdir -p "$BASE/backup-display-v1"
-for name in wake-test.sh refresh.sh; do
- if [ ! -f "$BASE/backup-display-v1/$name" ]; then cp "$BASE/$name" "$BASE/backup-display-v1/$name";fi
+mkdir -p "$BASE/backup-network-v2"
+for name in $FILES; do
+ if [ ! -f "$BASE/backup-network-v2/$name" ]; then cp "$BASE/$name" "$BASE/backup-network-v2/$name";fi
  cp "$STAGE/$name" "$BASE/$name.new"
  mv "$BASE/$name.new" "$BASE/$name"
 done
-echo 'Display optimization installed; pairing and schedule unchanged.'
-say 'Display update installed.'
+echo 'Offline recovery installed; pairing and schedule unchanged.'
+say 'Offline recovery installed.'
 if [ "$restart" = 1 ]; then
  sleep 2
  sh "$BASE/battery-agent.sh" start

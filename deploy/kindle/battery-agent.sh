@@ -99,11 +99,24 @@ case "${1:-start}" in
    if [ $((cycles%50)) -eq 0 ]; then : > "$LOG/agent.txt";fi
    lease_until $(( $(date +%s)+300 )) || exit 1
    date -u;echo "Refresh cycle $cycles"
-   # Two bounded attempts; on sustained outage exit safely, retaining cache.
-   if ! sh "$BASE/refresh.sh"; then
+   # Retry temporary failures once to allow Wi-Fi/DNS to recover after wake.
+   refresh_status=0
+   sh "$BASE/refresh.sh" || refresh_status=$?
+   if [ "$refresh_status" = 69 ]; then
     sleep 10
-    if ! sh "$BASE/refresh.sh"; then echo 'Network/render failure; leaving agent mode.';exit 1;fi
+    refresh_status=0
+    sh "$BASE/refresh.sh" || refresh_status=$?
    fi
+   if [ "$refresh_status" = 69 ]; then
+    # Never derive a new deadline from stale response headers. Keep the last
+    # decoded image, then use the same RTC deep-sleep path as online operation.
+    [ -s "$BASE/cache/current.png" ] || { echo 'Offline without cached image; leaving agent mode.';exit 1; }
+    timeout 5 eips -g "$BASE/cache/current.png" || exit 1
+    due=$(( $(date +%s)+1800 ))
+    echo "Temporary network failure; keeping dashboard, retry after deep sleep at $due"
+   elif [ "$refresh_status" != 0 ]; then
+    echo "Permanent/config/render failure ($refresh_status); leaving agent mode.";exit 1
+   else
    server=$(awk 'tolower($1)=="x-eatby-server-time:" {gsub("\r", "", $2); print $2}' "$BASE/cache/headers.txt" | tail -n 1)
    next=$(awk 'tolower($1)=="x-eatby-next-refresh:" {gsub("\r", "", $2); print $2}' "$BASE/cache/headers.txt" | tail -n 1)
    case "$server:$next" in *[!0-9:]*|:*|*:) echo 'Invalid scheduling headers';exit 1;; esac
@@ -113,8 +126,9 @@ case "${1:-start}" in
    # Schedule from receipt time, conservatively late by transfer/render time,
    # never early. Each response recalculates wall-clock slots, avoiding drift.
    due=$(( $(date +%s)+interval ))
-   lease_until $((due+600)) || exit 1
    echo "Next local deadline=$due (server slot=$next)"
+   fi
+   lease_until $((due+600)) || exit 1
    export_logs
    if [ $((due-$(date +%s))) -lt 150 ]; then
     # Too little time for normal suspend preparation. Do not miss the slot.
