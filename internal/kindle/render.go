@@ -87,40 +87,44 @@ func Render(s Schedule, subtitle string, sections []Section) (*image.Gray, error
 		d := font.Drawer{Dst: page, Src: image.Black, Face: face, Dot: fixed.P(x, y)}
 		d.DrawString(value)
 	}
-	// Minimal dashboard: only four panels, no brand, timestamp or stock header.
+	// Three compact panels on the first row and a full-width inventory panel below.
 	gap := 12
 	margin := 12
-	cw := (w - 2*margin - gap) / 2
 	footer := 0
 	if s.ShowStatus {
 		footer = 30
 		text(margin, h-10, w-2*margin, subtitle)
 	}
-	ch := (h - 2*margin - gap - footer) / 2
-	for i, section := range sections {
-		if i >= 4 {
-			break
-		}
-		x := margin + (i%2)*(cw+gap)
-		y := margin + (i/2)*(ch+gap)
-		draw.Draw(page, image.Rect(x, y, x+cw, y+ch), image.NewUniform(color.Gray{0}), image.Point{}, draw.Src)
-		draw.Draw(page, image.Rect(x+2, y+2, x+cw-2, y+ch-2), image.White, image.Point{}, draw.Src)
-		text(x+10, y+29, cw-20, section.Title)
+	topH := (h - 2*margin - gap - footer) * 2 / 5
+	bottomH := h - 2*margin - gap - footer - topH
+	drawSection := func(section Section, x, y, pw, ph int) {
+		draw.Draw(page, image.Rect(x, y, x+pw, y+ph), image.NewUniform(color.Gray{0}), image.Point{}, draw.Src)
+		draw.Draw(page, image.Rect(x+2, y+2, x+pw-2, y+ph-2), image.White, image.Point{}, draw.Src)
+		text(x+10, y+29, pw-20, section.Title)
 		lines := section.Lines
 		if len(lines) == 0 {
 			lines = []string{"暂无事项"}
 		}
-		capacity := (ch - 50) / 30
+		capacity := (ph - 50) / 30
 		shown := len(lines)
 		if shown > capacity {
 			shown = capacity - 1
 		}
 		for j := 0; j < shown; j++ {
-			text(x+10, y+61+j*30, cw-20, lines[j])
+			text(x+10, y+61+j*30, pw-20, lines[j])
 		}
 		if shown < len(lines) {
-			text(x+10, y+61+shown*30, cw-20, fmt.Sprintf("还有 %d 项，请在手机查看", len(lines)-shown))
+			text(x+10, y+61+shown*30, pw-20, fmt.Sprintf("还有 %d 项，请在手机查看", len(lines)-shown))
 		}
+	}
+	if len(sections) > 0 {
+		panelW := (w - 2*margin - 2*gap) / 3
+		for i := 0; i < len(sections) && i < 3; i++ {
+			drawSection(sections[i], margin+i*(panelW+gap), margin, panelW, topH)
+		}
+	}
+	if len(sections) > 3 {
+		drawSection(sections[3], margin, margin+topH+gap, w-2*margin, bottomH)
 	}
 	return s.PanelImage(page)
 }

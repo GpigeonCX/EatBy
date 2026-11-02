@@ -38,10 +38,12 @@ func (s *Server) dashboardData(hid string) (map[string]any, error) {
 		return nil, e
 	}
 	low := []Product{}
+	inventory := []Product{}
 	for prows.Next() {
 		p, e := scanProduct(prows)
 		if e == nil {
 			s.fillProductStock(hid, &p)
+			inventory = append(inventory, p)
 			if p.StockState == "low" || p.StockState == "empty" {
 				low = append(low, p)
 			}
@@ -68,7 +70,7 @@ func (s *Server) dashboardData(hid string) (map[string]any, error) {
 	if s.store.DB.QueryRow(`SELECT id,action,created_at FROM inventory_events WHERE household_id=? AND undone=0 ORDER BY created_at DESC LIMIT 1`, hid).Scan(&eid, &action, &created) == nil {
 		recent = map[string]string{"id": eid, "action": action, "created_at": created}
 	}
-	return map[string]any{"expired": expired, "expiring": soon, "low_stock": low, "shopping": shopping, "todos": todos, "locations": locations, "stock_count": stockCount, "warning_days": s.warningDays(hid), "recent_event": recent, "generated_at": time.Now()}, nil
+	return map[string]any{"expired": expired, "expiring": soon, "low_stock": low, "inventory": inventory, "shopping": shopping, "todos": todos, "locations": locations, "stock_count": stockCount, "warning_days": s.warningDays(hid), "recent_event": recent, "generated_at": time.Now()}, nil
 }
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	d, e := s.dashboardData(getActor(r).HouseholdID)

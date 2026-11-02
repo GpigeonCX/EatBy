@@ -35,24 +35,30 @@ func (s *Server) deviceImage(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "读取数据失败")
 		return
 	}
-	sections := []kindle.Section{{Title: "临期 / 已过期"}, {Title: "快没了"}, {Title: "采购清单"}, {Title: "待办清单"}}
-	for _, key := range []string{"expired", "expiring"} {
-		for _, b := range data[key].([]Batch) {
-			line := b.ProductName
-			if b.EffectiveExpiry != nil {
-				line += " · " + *b.EffectiveExpiry
-			}
-			sections[0].Lines = append(sections[0].Lines, line)
-		}
-	}
+	sections := []kindle.Section{{Title: "快没了"}, {Title: "采购清单"}, {Title: "待办清单"}, {Title: "所有库存"}}
 	for _, p := range data["low_stock"].([]Product) {
-		sections[1].Lines = append(sections[1].Lines, p.Name)
+		sections[0].Lines = append(sections[0].Lines, p.Name)
 	}
 	for _, v := range data["shopping"].([]ShoppingItem) {
-		sections[2].Lines = append(sections[2].Lines, "□ "+v.Name)
+		sections[1].Lines = append(sections[1].Lines, "□ "+v.Name)
 	}
 	for _, v := range data["todos"].([]TodoItem) {
-		sections[3].Lines = append(sections[3].Lines, "□ "+v.Title)
+		sections[2].Lines = append(sections[2].Lines, "□ "+v.Title)
+	}
+	// Build a compact inventory section and cap it for the Kindle layout.
+	if rows, err := s.store.DB.Query(productSelect()+` WHERE household_id=? ORDER BY favorite DESC,name LIMIT 25`, hid); err == nil {
+		for rows.Next() {
+			p, err := scanProduct(rows)
+			if err == nil {
+				s.fillProductStock(hid, &p)
+				value := p.StockState
+				if p.TrackingMode == "quantity" {
+					value = fmt.Sprintf("%g %s", p.TotalQuantity, p.DefaultUnit)
+				}
+				sections[3].Lines = append(sections[3].Lines, fmt.Sprintf("%s %s", p.Name, value))
+			}
+		}
+		rows.Close()
 	}
 	now := time.Now()
 	loc, _ := time.LoadLocation("Asia/Shanghai")
