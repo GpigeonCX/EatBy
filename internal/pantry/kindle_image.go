@@ -45,20 +45,16 @@ func (s *Server) deviceImage(w http.ResponseWriter, r *http.Request) {
 	for _, v := range data["todos"].([]TodoItem) {
 		sections[2].Lines = append(sections[2].Lines, "□ "+v.Title)
 	}
-	// Build a compact inventory section and cap it for the Kindle layout.
-	if rows, err := s.store.DB.Query(productSelect()+` WHERE household_id=? ORDER BY favorite DESC,name LIMIT 25`, hid); err == nil {
-		for rows.Next() {
-			p, err := scanProduct(rows)
-			if err == nil {
-				s.fillProductStock(hid, &p)
-				value := p.StockState
-				if p.TrackingMode == "quantity" {
-					value = fmt.Sprintf("%g %s", p.TotalQuantity, p.DefaultUnit)
-				}
-				sections[3].Lines = append(sections[3].Lines, fmt.Sprintf("%s %s", p.Name, value))
-			}
+	// Share inventory data with the web dashboard; the renderer handles fitting.
+	for _, p := range data["inventory"].([]Product) {
+		if p.BatchCount == 0 {
+			continue
 		}
-		rows.Close()
+		value := map[string]string{"enough": "充足", "half": "一半", "low": "快没了", "empty": "用完"}[p.StockState]
+		if p.TrackingMode == "quantity" {
+			value = fmt.Sprintf("%g %s", p.TotalQuantity, p.DefaultUnit)
+		}
+		sections[3].Lines = append(sections[3].Lines, fmt.Sprintf("%s %s", p.Name, value))
 	}
 	now := time.Now()
 	loc, _ := time.LoadLocation("Asia/Shanghai")

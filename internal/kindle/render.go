@@ -97,7 +97,7 @@ func Render(s Schedule, subtitle string, sections []Section) (*image.Gray, error
 	}
 	topH := (h - 2*margin - gap - footer) * 2 / 5
 	bottomH := h - 2*margin - gap - footer - topH
-	drawSection := func(section Section, x, y, pw, ph int) {
+	drawSection := func(section Section, x, y, pw, ph int, inventory bool) {
 		draw.Draw(page, image.Rect(x, y, x+pw, y+ph), image.NewUniform(color.Gray{0}), image.Point{}, draw.Src)
 		draw.Draw(page, image.Rect(x+2, y+2, x+pw-2, y+ph-2), image.White, image.Point{}, draw.Src)
 		text(x+10, y+29, pw-20, section.Title)
@@ -106,6 +106,11 @@ func Render(s Schedule, subtitle string, sections []Section) (*image.Gray, error
 			lines = []string{"暂无事项"}
 		}
 		capacity := (ph - 50) / 30
+		if inventory && len(section.Lines) > 0 {
+			lines = inventoryRows(section.Lines, pw-20, capacity, func(value string) int {
+				return font.MeasureString(face, value).Ceil()
+			})
+		}
 		shown := len(lines)
 		if shown > capacity {
 			shown = capacity - 1
@@ -120,11 +125,11 @@ func Render(s Schedule, subtitle string, sections []Section) (*image.Gray, error
 	if len(sections) > 0 {
 		panelW := (w - 2*margin - 2*gap) / 3
 		for i := 0; i < len(sections) && i < 3; i++ {
-			drawSection(sections[i], margin+i*(panelW+gap), margin, panelW, topH)
+			drawSection(sections[i], margin+i*(panelW+gap), margin, panelW, topH, false)
 		}
 	}
 	if len(sections) > 3 {
-		drawSection(sections[3], margin, margin+topH+gap, w-2*margin, bottomH)
+		drawSection(sections[3], margin, margin+topH+gap, w-2*margin, bottomH, true)
 	}
 	return s.PanelImage(page)
 }
