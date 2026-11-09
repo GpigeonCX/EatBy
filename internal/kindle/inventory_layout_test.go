@@ -2,42 +2,53 @@ package kindle
 
 import (
 	"fmt"
-	"strings"
 	"testing"
-	"unicode/utf8"
 )
 
-func TestInventoryRows(t *testing.T) {
-	measure := utf8.RuneCountInString
-	t.Run("horizontal and wrap", func(t *testing.T) {
-		got := inventoryRows([]string{"排骨 15袋", "牛奶 1件", "牛肉 8袋"}, 16, 4, measure)
-		if len(got) != 2 || got[0] != "排骨 15袋   牛奶 1件" || got[1] != "牛肉 8袋" {
-			t.Fatalf("unexpected rows: %q", got)
+func TestInventoryGrid(t *testing.T) {
+	items := make([]string, 25)
+	for i := range items {
+		items[i] = fmt.Sprintf("食材%d\t2袋", i)
+	}
+	for _, tc := range []struct {
+		name           string
+		width, columns int
+	}{{"landscape", 756, 4}, {"portrait", 556, 3}} {
+		t.Run(tc.name, func(t *testing.T) {
+			cells, cw, hidden := inventoryGrid(items, tc.width, 9)
+			if len(cells) != 25 || hidden != 0 {
+				t.Fatalf("missing items: %d, hidden %d", len(cells), hidden)
+			}
+			for i, c := range cells {
+				if c.Row != i/tc.columns || c.X != (i%tc.columns)*(cw+16) {
+					t.Fatalf("incorrect alignment: %+v", c)
+				}
+				if c.X+cw > tc.width {
+					t.Fatal("cell outside panel")
+				}
+			}
+		})
+	}
+	t.Run("truncate name without losing quantity", func(t *testing.T) {
+		cells, _, _ := inventoryGrid([]string{"超长中文库存名称\t12袋", "五花肉\t4袋", "名字带 空格\t1盒"}, 756, 9)
+		if cells[0].Name != "超长中文…" || cells[0].Value != "12袋" || cells[1].Name != "五花肉" || cells[2].Value != "1盒" {
+			t.Fatalf("bad cells: %+v", cells)
 		}
 	})
-	t.Run("25 items fit without a hard item cap", func(t *testing.T) {
-		items := []string{}
-		for i := 0; i < 25; i++ {
-			items = append(items, fmt.Sprintf("食材%d 2袋", i))
-		}
-		got := inventoryRows(items, 38, 8, measure)
-		if strings.Contains(strings.Join(got, ""), "手机") || !strings.Contains(strings.Join(got, ""), "食材24 2袋") {
-			t.Fatalf("lost inventory: %q", got)
+	t.Run("reserve overflow row", func(t *testing.T) {
+		cells, _, hidden := inventoryGrid(items, 756, 3)
+		if len(cells) != 8 || hidden != 17 {
+			t.Fatalf("got %d cells, %d hidden", len(cells), hidden)
 		}
 	})
-	t.Run("overflow summary", func(t *testing.T) {
-		got := inventoryRows([]string{"鸡蛋 12个", "牛奶 3瓶", "饺子 2袋"}, 8, 2, measure)
-		if len(got) != 2 || !strings.Contains(got[1], "共 3 种") {
-			t.Fatalf("missing summary: %q", got)
+	t.Run("empty and no room", func(t *testing.T) {
+		cells, _, hidden := inventoryGrid(nil, 756, 9)
+		if len(cells) != 0 || hidden != 0 {
+			t.Fatal("nonempty result")
 		}
-	})
-	t.Run("long names and empty", func(t *testing.T) {
-		got := inventoryRows([]string{"很长很长的食材名称 12袋"}, 8, 2, measure)
-		if len(got) != 1 || measure(got[0]) > 8 || !strings.HasSuffix(got[0], "…") {
-			t.Fatalf("bad truncation: %q", got)
-		}
-		if len(inventoryRows(nil, 8, 2, measure)) != 0 {
-			t.Fatal("expected empty")
+		cells, _, hidden = inventoryGrid(items, 756, 0)
+		if len(cells) != 0 || hidden != 25 {
+			t.Fatal("bad zero capacity")
 		}
 	})
 }

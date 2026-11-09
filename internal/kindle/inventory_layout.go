@@ -1,35 +1,43 @@
 package kindle
 
-import (
-	"fmt"
-	"strings"
-)
+import "strings"
 
-// inventoryRows packs whole inventory entries horizontally using actual font
-// measurements. Oversized entries are shortened; overflow reserves a summary row.
-func inventoryRows(items []string, width, capacity int, measure func(string) int) []string {
-	if capacity <= 0 {
-		return nil
+type inventoryCell struct {
+	Name, Value string
+	X, Row      int
+}
+
+// Each row uses identical column positions, independent of name lengths.
+// 800px landscape fits four columns; 600px portrait fits three.
+func inventoryGrid(items []string, width, rows int) (cells []inventoryCell, cellWidth, hidden int) {
+	const gap = 16
+	columns := (width + gap) / 180
+	if columns < 1 {
+		columns = 1
 	}
-	rows := []string{}
-	for _, item := range items {
-		item = strings.Join(strings.Fields(item), " ")
-		if measure(item) > width {
-			runes := []rune(item)
-			for len(runes) > 0 && measure(string(runes)+"…") > width {
-				runes = runes[:len(runes)-1]
-			}
-			item = string(runes) + "…"
+	if columns > 5 {
+		columns = 5
+	}
+	cellWidth = (width - (columns-1)*gap) / columns
+	if rows <= 0 {
+		return nil, cellWidth, len(items)
+	}
+	capacity := rows * columns
+	if len(items) > capacity {
+		capacity = (rows - 1) * columns
+	}
+	shown := len(items)
+	if shown > capacity {
+		shown = capacity
+	}
+	for i, item := range items[:shown] {
+		name, value, _ := strings.Cut(item, "\t")
+		name = strings.Join(strings.Fields(name), " ")
+		runes := []rune(name)
+		if len(runes) > 4 {
+			name = string(runes[:4]) + "…"
 		}
-		if len(rows) > 0 && measure(rows[len(rows)-1]+"   "+item) <= width {
-			rows[len(rows)-1] += "   " + item
-		} else {
-			rows = append(rows, item)
-		}
+		cells = append(cells, inventoryCell{Name: name, Value: value, X: (i % columns) * (cellWidth + gap), Row: i / columns})
 	}
-	if len(rows) > capacity {
-		rows = rows[:capacity]
-		rows[capacity-1] = fmt.Sprintf("…… 共 %d 种，请在手机查看", len(items))
-	}
-	return rows
+	return cells, cellWidth, len(items) - shown
 }

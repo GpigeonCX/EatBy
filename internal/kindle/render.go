@@ -107,9 +107,21 @@ func Render(s Schedule, subtitle string, sections []Section) (*image.Gray, error
 		}
 		capacity := (ph - 50) / 30
 		if inventory && len(section.Lines) > 0 {
-			lines = inventoryRows(section.Lines, pw-20, capacity, func(value string) int {
-				return font.MeasureString(face, value).Ceil()
-			})
+			cells, cellWidth, hidden := inventoryGrid(section.Lines, pw-20, capacity)
+			for _, cell := range cells {
+				cx, cy := x+10+cell.X, y+61+cell.Row*30
+				valueWidth := font.MeasureString(face, cell.Value).Ceil()
+				// Reserve space for the quantity, even for unusually large values.
+				if valueWidth > cellWidth/2 {
+					valueWidth = cellWidth / 2
+				}
+				text(cx, cy, cellWidth-valueWidth-6, cell.Name)
+				text(cx+cellWidth-valueWidth, cy, valueWidth, cell.Value)
+			}
+			if hidden > 0 {
+				text(x+10, y+61+(capacity-1)*30, pw-20, fmt.Sprintf("…… 还有 %d 种，共 %d 种", hidden, len(section.Lines)))
+			}
+			return
 		}
 		shown := len(lines)
 		if shown > capacity {

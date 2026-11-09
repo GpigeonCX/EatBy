@@ -52,9 +52,9 @@ func (s *Server) deviceImage(w http.ResponseWriter, r *http.Request) {
 		}
 		value := map[string]string{"enough": "充足", "half": "一半", "low": "快没了", "empty": "用完"}[p.StockState]
 		if p.TrackingMode == "quantity" {
-			value = fmt.Sprintf("%g %s", p.TotalQuantity, p.DefaultUnit)
+			value = fmt.Sprintf("%g%s", p.TotalQuantity, p.DefaultUnit)
 		}
-		sections[3].Lines = append(sections[3].Lines, fmt.Sprintf("%s %s", p.Name, value))
+		sections[3].Lines = append(sections[3].Lines, fmt.Sprintf("%s\t%s", p.Name, value))
 	}
 	now := time.Now()
 	loc, _ := time.LoadLocation("Asia/Shanghai")
