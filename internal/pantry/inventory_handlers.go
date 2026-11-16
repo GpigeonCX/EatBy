@@ -125,14 +125,13 @@ func (s *Server) listProducts(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, e.Error())
 		return
 	}
-	defer rows.Close()
-	out := []Product{}
-	for rows.Next() {
-		p, e := scanProduct(rows)
-		if e == nil {
-			s.fillProductStock(a.HouseholdID, &p)
-			out = append(out, p)
-		}
+	out, e := collectRows(rows, scanProduct)
+	if e != nil {
+		fail(w, 500, e.Error())
+		return
+	}
+	for i := range out {
+		s.fillProductStock(a.HouseholdID, &out[i])
 	}
 	jsonOut(w, 200, out)
 }
@@ -283,14 +282,13 @@ func (s *Server) listBatches(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, e.Error())
 		return
 	}
-	defer rows.Close()
-	out := []Batch{}
-	for rows.Next() {
-		b, e := scanBatch(rows)
-		if e == nil {
-			s.hydrateExpiry(a.HouseholdID, &b)
-			out = append(out, b)
-		}
+	out, e := collectRows(rows, scanBatch)
+	if e != nil {
+		fail(w, 500, e.Error())
+		return
+	}
+	for i := range out {
+		s.hydrateExpiry(a.HouseholdID, &out[i])
 	}
 	jsonOut(w, 200, out)
 }

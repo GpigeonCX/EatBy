@@ -19,37 +19,36 @@ func (s *Server) dashboardData(hid string) (map[string]any, error) {
 	if e != nil {
 		return nil, e
 	}
+	batches, e := collectRows(rows, scanBatch)
+	if e != nil {
+		return nil, e
+	}
 	expired := []Batch{}
 	soon := []Batch{}
-	for rows.Next() {
-		b, e := scanBatch(rows)
-		if e == nil {
-			s.hydrateExpiry(hid, &b)
-			if b.ExpiryStatus == "expired" {
-				expired = append(expired, b)
-			} else if b.ExpiryStatus == "soon" {
-				soon = append(soon, b)
-			}
+	for _, b := range batches {
+		s.hydrateExpiry(hid, &b)
+		if b.ExpiryStatus == "expired" {
+			expired = append(expired, b)
+		} else if b.ExpiryStatus == "soon" {
+			soon = append(soon, b)
 		}
 	}
-	rows.Close()
 	prows, e := s.store.DB.Query(productSelect()+` WHERE household_id=? ORDER BY favorite DESC,name`, hid)
 	if e != nil {
 		return nil, e
 	}
+	inventory, e := collectRows(prows, scanProduct)
+	if e != nil {
+		return nil, e
+	}
 	low := []Product{}
-	inventory := []Product{}
-	for prows.Next() {
-		p, e := scanProduct(prows)
-		if e == nil {
-			s.fillProductStock(hid, &p)
-			inventory = append(inventory, p)
-			if p.StockState == "low" || p.StockState == "empty" {
-				low = append(low, p)
-			}
+	for i := range inventory {
+		p := &inventory[i]
+		s.fillProductStock(hid, p)
+		if p.StockState == "low" || p.StockState == "empty" {
+			low = append(low, *p)
 		}
 	}
-	prows.Close()
 	shopping, _ := s.shoppingData(hid, false)
 	todos, _ := s.todoData(hid, false)
 	var stockCount int
